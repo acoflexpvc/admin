@@ -136,7 +136,8 @@ function AdminPagesSelection() {
   }
 
   const getPublicPath = (slug: string) => {
-    return slug === "home" ? "/" : `/${slug}`;
+    const base = import.meta.env.VITE_PUBLIC_WEBSITE_URL || "https://acoflex.com";
+    return slug === "home" ? `${base}/` : `${base}/${slug}`;
   };
 
   // Pre-sort pages in natural reading order

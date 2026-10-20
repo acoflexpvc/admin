@@ -179,7 +179,8 @@ function AdminProductsList() {
             <tbody className="divide-y divide-border">
               {filteredProducts?.map((product) => {
                 const category = categoriesMap?.[product.category_id];
-                const publicUrl = `/products/${category?.slug || "plumbing"}/${product.slug}`;
+                const base = import.meta.env.VITE_PUBLIC_WEBSITE_URL || "https://acoflex.com";
+                const publicUrl = `${base}/products/${category?.slug || "plumbing"}/${product.slug}`;
 
                 return (
                   <tr key={product.id} className="hover:bg-muted/20 transition-colors">

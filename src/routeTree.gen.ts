@@ -10,82 +10,25 @@
 
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as IndexRouteImport } from './routes/index'
-import { Route as AboutRouteImport } from './routes/about'
 import { Route as AdminRouteImport } from './routes/admin'
-import { Route as ContactRouteImport } from './routes/contact'
-import { Route as DealersRouteImport } from './routes/dealers'
-import { Route as FaqRouteImport } from './routes/faq'
-import { Route as InfrastructureRouteImport } from './routes/infrastructure'
-import { Route as ManufacturingRouteImport } from './routes/manufacturing'
-import { Route as ProductsRouteImport } from './routes/products'
-import { Route as QualityRouteImport } from './routes/quality'
-import { Route as ResourcesRouteImport } from './routes/resources'
 import { Route as AdminIndexRouteImport } from './routes/admin.index'
 import { Route as AdminCategoriesRouteImport } from './routes/admin.categories'
 import { Route as AdminLoginRouteImport } from './routes/admin.login'
 import { Route as AdminMediaRouteImport } from './routes/admin.media'
 import { Route as AdminSettingsRouteImport } from './routes/admin.settings'
-import { Route as ProductsIndexRouteImport } from './routes/products.index'
 import { Route as AdminPagesIndexRouteImport } from './routes/admin.pages.index'
 import { Route as AdminPagesSlugRouteImport } from './routes/admin.pages.$slug'
 import { Route as AdminProductsIndexRouteImport } from './routes/admin.products.index'
 import { Route as AdminProductsIdRouteImport } from './routes/admin.products.$id'
-import { Route as ProductsCategoryIndexRouteImport } from './routes/products.$category.index'
-import { Route as ProductsCategoryProductRouteImport } from './routes/products.$category.$product'
 
 const IndexRoute = IndexRouteImport.update({
   id: '/',
   path: '/',
   getParentRoute: () => rootRouteImport,
 } as any)
-const AboutRoute = AboutRouteImport.update({
-  id: '/about',
-  path: '/about',
-  getParentRoute: () => rootRouteImport,
-} as any)
 const AdminRoute = AdminRouteImport.update({
   id: '/admin',
   path: '/admin',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const ContactRoute = ContactRouteImport.update({
-  id: '/contact',
-  path: '/contact',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const DealersRoute = DealersRouteImport.update({
-  id: '/dealers',
-  path: '/dealers',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const FaqRoute = FaqRouteImport.update({
-  id: '/faq',
-  path: '/faq',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const InfrastructureRoute = InfrastructureRouteImport.update({
-  id: '/infrastructure',
-  path: '/infrastructure',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const ManufacturingRoute = ManufacturingRouteImport.update({
-  id: '/manufacturing',
-  path: '/manufacturing',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const ProductsRoute = ProductsRouteImport.update({
-  id: '/products',
-  path: '/products',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const QualityRoute = QualityRouteImport.update({
-  id: '/quality',
-  path: '/quality',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const ResourcesRoute = ResourcesRouteImport.update({
-  id: '/resources',
-  path: '/resources',
   getParentRoute: () => rootRouteImport,
 } as any)
 const AdminIndexRoute = AdminIndexRouteImport.update({
@@ -113,11 +56,6 @@ const AdminSettingsRoute = AdminSettingsRouteImport.update({
   path: '/settings',
   getParentRoute: () => AdminRoute,
 } as any)
-const ProductsIndexRoute = ProductsIndexRouteImport.update({
-  id: '/',
-  path: '/',
-  getParentRoute: () => ProductsRoute,
-} as any)
 const AdminPagesIndexRoute = AdminPagesIndexRouteImport.update({
   id: '/pages/',
   path: '/pages/',
@@ -138,179 +76,90 @@ const AdminProductsIdRoute = AdminProductsIdRouteImport.update({
   path: '/products/$id',
   getParentRoute: () => AdminRoute,
 } as any)
-const ProductsCategoryIndexRoute = ProductsCategoryIndexRouteImport.update({
-  id: '/$category/',
-  path: '/$category/',
-  getParentRoute: () => ProductsRoute,
-} as any)
-const ProductsCategoryProductRoute = ProductsCategoryProductRouteImport.update({
-  id: '/$category/$product',
-  path: '/$category/$product',
-  getParentRoute: () => ProductsRoute,
-} as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
-  '/about': typeof AboutRoute
   '/admin': typeof AdminRouteWithChildren
-  '/contact': typeof ContactRoute
-  '/dealers': typeof DealersRoute
-  '/faq': typeof FaqRoute
-  '/infrastructure': typeof InfrastructureRoute
-  '/manufacturing': typeof ManufacturingRoute
-  '/products': typeof ProductsRouteWithChildren
-  '/quality': typeof QualityRoute
-  '/resources': typeof ResourcesRoute
   '/admin/categories': typeof AdminCategoriesRoute
   '/admin/login': typeof AdminLoginRoute
   '/admin/media': typeof AdminMediaRoute
   '/admin/settings': typeof AdminSettingsRoute
   '/admin/': typeof AdminIndexRoute
-  '/products/': typeof ProductsIndexRoute
   '/admin/pages/$slug': typeof AdminPagesSlugRoute
   '/admin/products/$id': typeof AdminProductsIdRoute
-  '/products/$category/$product': typeof ProductsCategoryProductRoute
   '/admin/pages/': typeof AdminPagesIndexRoute
   '/admin/products/': typeof AdminProductsIndexRoute
-  '/products/$category/': typeof ProductsCategoryIndexRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
-  '/about': typeof AboutRoute
-  '/contact': typeof ContactRoute
-  '/dealers': typeof DealersRoute
-  '/faq': typeof FaqRoute
-  '/infrastructure': typeof InfrastructureRoute
-  '/manufacturing': typeof ManufacturingRoute
-  '/quality': typeof QualityRoute
-  '/resources': typeof ResourcesRoute
   '/admin/categories': typeof AdminCategoriesRoute
   '/admin/login': typeof AdminLoginRoute
   '/admin/media': typeof AdminMediaRoute
   '/admin/settings': typeof AdminSettingsRoute
   '/admin': typeof AdminIndexRoute
-  '/products': typeof ProductsIndexRoute
   '/admin/pages/$slug': typeof AdminPagesSlugRoute
   '/admin/products/$id': typeof AdminProductsIdRoute
-  '/products/$category/$product': typeof ProductsCategoryProductRoute
   '/admin/pages': typeof AdminPagesIndexRoute
   '/admin/products': typeof AdminProductsIndexRoute
-  '/products/$category': typeof ProductsCategoryIndexRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
-  '/about': typeof AboutRoute
   '/admin': typeof AdminRouteWithChildren
-  '/contact': typeof ContactRoute
-  '/dealers': typeof DealersRoute
-  '/faq': typeof FaqRoute
-  '/infrastructure': typeof InfrastructureRoute
-  '/manufacturing': typeof ManufacturingRoute
-  '/products': typeof ProductsRouteWithChildren
-  '/quality': typeof QualityRoute
-  '/resources': typeof ResourcesRoute
   '/admin/categories': typeof AdminCategoriesRoute
   '/admin/login': typeof AdminLoginRoute
   '/admin/media': typeof AdminMediaRoute
   '/admin/settings': typeof AdminSettingsRoute
   '/admin/': typeof AdminIndexRoute
-  '/products/': typeof ProductsIndexRoute
   '/admin/pages/$slug': typeof AdminPagesSlugRoute
   '/admin/products/$id': typeof AdminProductsIdRoute
-  '/products/$category/$product': typeof ProductsCategoryProductRoute
   '/admin/pages/': typeof AdminPagesIndexRoute
   '/admin/products/': typeof AdminProductsIndexRoute
-  '/products/$category/': typeof ProductsCategoryIndexRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
   fullPaths:
     | '/'
-    | '/about'
     | '/admin'
-    | '/contact'
-    | '/dealers'
-    | '/faq'
-    | '/infrastructure'
-    | '/manufacturing'
-    | '/products'
-    | '/quality'
-    | '/resources'
     | '/admin/categories'
     | '/admin/login'
     | '/admin/media'
     | '/admin/settings'
     | '/admin/'
-    | '/products/'
     | '/admin/pages/$slug'
     | '/admin/products/$id'
-    | '/products/$category/$product'
     | '/admin/pages/'
     | '/admin/products/'
-    | '/products/$category/'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
-    | '/about'
-    | '/contact'
-    | '/dealers'
-    | '/faq'
-    | '/infrastructure'
-    | '/manufacturing'
-    | '/quality'
-    | '/resources'
     | '/admin/categories'
     | '/admin/login'
     | '/admin/media'
     | '/admin/settings'
     | '/admin'
-    | '/products'
     | '/admin/pages/$slug'
     | '/admin/products/$id'
-    | '/products/$category/$product'
     | '/admin/pages'
     | '/admin/products'
-    | '/products/$category'
   id:
     | '__root__'
     | '/'
-    | '/about'
     | '/admin'
-    | '/contact'
-    | '/dealers'
-    | '/faq'
-    | '/infrastructure'
-    | '/manufacturing'
-    | '/products'
-    | '/quality'
-    | '/resources'
     | '/admin/categories'
     | '/admin/login'
     | '/admin/media'
     | '/admin/settings'
     | '/admin/'
-    | '/products/'
     | '/admin/pages/$slug'
     | '/admin/products/$id'
-    | '/products/$category/$product'
     | '/admin/pages/'
     | '/admin/products/'
-    | '/products/$category/'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
-  AboutRoute: typeof AboutRoute
   AdminRoute: typeof AdminRouteWithChildren
-  ContactRoute: typeof ContactRoute
-  DealersRoute: typeof DealersRoute
-  FaqRoute: typeof FaqRoute
-  InfrastructureRoute: typeof InfrastructureRoute
-  ManufacturingRoute: typeof ManufacturingRoute
-  ProductsRoute: typeof ProductsRouteWithChildren
-  QualityRoute: typeof QualityRoute
-  ResourcesRoute: typeof ResourcesRoute
 }
 
 declare module '@tanstack/react-router' {
@@ -322,74 +171,11 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof IndexRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/about': {
-      id: '/about'
-      path: '/about'
-      fullPath: '/about'
-      preLoaderRoute: typeof AboutRouteImport
-      parentRoute: typeof rootRouteImport
-    }
     '/admin': {
       id: '/admin'
       path: '/admin'
       fullPath: '/admin'
       preLoaderRoute: typeof AdminRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/contact': {
-      id: '/contact'
-      path: '/contact'
-      fullPath: '/contact'
-      preLoaderRoute: typeof ContactRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/dealers': {
-      id: '/dealers'
-      path: '/dealers'
-      fullPath: '/dealers'
-      preLoaderRoute: typeof DealersRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/faq': {
-      id: '/faq'
-      path: '/faq'
-      fullPath: '/faq'
-      preLoaderRoute: typeof FaqRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/infrastructure': {
-      id: '/infrastructure'
-      path: '/infrastructure'
-      fullPath: '/infrastructure'
-      preLoaderRoute: typeof InfrastructureRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/manufacturing': {
-      id: '/manufacturing'
-      path: '/manufacturing'
-      fullPath: '/manufacturing'
-      preLoaderRoute: typeof ManufacturingRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/products': {
-      id: '/products'
-      path: '/products'
-      fullPath: '/products'
-      preLoaderRoute: typeof ProductsRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/quality': {
-      id: '/quality'
-      path: '/quality'
-      fullPath: '/quality'
-      preLoaderRoute: typeof QualityRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/resources': {
-      id: '/resources'
-      path: '/resources'
-      fullPath: '/resources'
-      preLoaderRoute: typeof ResourcesRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/admin/': {
@@ -427,13 +213,6 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AdminSettingsRouteImport
       parentRoute: typeof AdminRoute
     }
-    '/products/': {
-      id: '/products/'
-      path: '/'
-      fullPath: '/products/'
-      preLoaderRoute: typeof ProductsIndexRouteImport
-      parentRoute: typeof ProductsRoute
-    }
     '/admin/pages/': {
       id: '/admin/pages/'
       path: '/pages'
@@ -461,20 +240,6 @@ declare module '@tanstack/react-router' {
       fullPath: '/admin/products/$id'
       preLoaderRoute: typeof AdminProductsIdRouteImport
       parentRoute: typeof AdminRoute
-    }
-    '/products/$category/': {
-      id: '/products/$category/'
-      path: '/$category'
-      fullPath: '/products/$category/'
-      preLoaderRoute: typeof ProductsCategoryIndexRouteImport
-      parentRoute: typeof ProductsRoute
-    }
-    '/products/$category/$product': {
-      id: '/products/$category/$product'
-      path: '/$category/$product'
-      fullPath: '/products/$category/$product'
-      preLoaderRoute: typeof ProductsCategoryProductRouteImport
-      parentRoute: typeof ProductsRoute
     }
   }
 }
@@ -505,34 +270,9 @@ const AdminRouteChildren: AdminRouteChildren = {
 
 const AdminRouteWithChildren = AdminRoute._addFileChildren(AdminRouteChildren)
 
-interface ProductsRouteChildren {
-  ProductsIndexRoute: typeof ProductsIndexRoute
-  ProductsCategoryProductRoute: typeof ProductsCategoryProductRoute
-  ProductsCategoryIndexRoute: typeof ProductsCategoryIndexRoute
-}
-
-const ProductsRouteChildren: ProductsRouteChildren = {
-  ProductsIndexRoute: ProductsIndexRoute,
-  ProductsCategoryProductRoute: ProductsCategoryProductRoute,
-  ProductsCategoryIndexRoute: ProductsCategoryIndexRoute,
-}
-
-const ProductsRouteWithChildren = ProductsRoute._addFileChildren(
-  ProductsRouteChildren,
-)
-
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
-  AboutRoute: AboutRoute,
   AdminRoute: AdminRouteWithChildren,
-  ContactRoute: ContactRoute,
-  DealersRoute: DealersRoute,
-  FaqRoute: FaqRoute,
-  InfrastructureRoute: InfrastructureRoute,
-  ManufacturingRoute: ManufacturingRoute,
-  ProductsRoute: ProductsRouteWithChildren,
-  QualityRoute: QualityRoute,
-  ResourcesRoute: ResourcesRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)

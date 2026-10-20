@@ -130,7 +130,7 @@ function AdminLayout() {
 
         <div className="mt-auto p-4 border-t border-border space-y-2">
           <a
-            href="/"
+            href={import.meta.env.VITE_PUBLIC_WEBSITE_URL || "https://acoflex.com"}
             target="_blank"
             rel="noreferrer"
             className="flex items-center justify-between px-3 py-2 rounded-lg text-xs font-medium text-muted-foreground hover:bg-muted hover:text-foreground transition-colors"

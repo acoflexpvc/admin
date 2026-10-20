@@ -310,7 +310,7 @@ function AdminCategories() {
                 />
               </div>
               <a
-                href={`/products/${cat.slug}`}
+                href={`${import.meta.env.VITE_PUBLIC_WEBSITE_URL || "https://acoflex.com"}/products/${cat.slug}`}
                 target="_blank"
                 rel="noreferrer"
                 className="p-2 text-muted-foreground hover:text-foreground hover:bg-muted rounded-md transition-colors"

@@ -151,7 +151,7 @@ function AdminLogin() {
 
         <div className="pt-4 border-t border-white/10 text-center">
           <a
-            href="/"
+            href={import.meta.env.VITE_PUBLIC_WEBSITE_URL || "https://acoflex.com"}
             className="text-xs text-white/60 hover:text-gold transition-colors inline-flex items-center gap-1"
           >
             ← Return to Acoflex Website
