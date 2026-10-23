@@ -1,8 +1,10 @@
 import { createFileRoute, Outlet, Link, useNavigate, useLocation } from "@tanstack/react-router";
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { useAdminAuth } from "@/lib/admin-auth";
 import { images } from "@/lib/site-data";
+import { publicSiteUrl } from "@/lib/site-url";
 import { Button } from "@/components/ui/button";
+import { Sheet, SheetContent, SheetDescription, SheetTitle } from "@/components/ui/sheet";
 import {
   FileText,
   Boxes,
@@ -12,6 +14,8 @@ import {
   ShieldAlert,
   Loader2,
   ExternalLink,
+  Menu,
+  PanelTop,
 } from "lucide-react";
 
 export const Route = createFileRoute("/admin")({
@@ -21,10 +25,55 @@ export const Route = createFileRoute("/admin")({
   component: AdminLayout,
 });
 
+type NavItem = {
+  label: string;
+  to: "/admin" | "/admin/pages/home" | "/admin/products" | "/admin/media" | "/admin/settings";
+  icon: typeof FileText;
+  hash?: string;
+  isActive: (path: string) => boolean;
+};
+
+const navLinks: NavItem[] = [
+  {
+    label: "Website Pages",
+    to: "/admin",
+    icon: FileText,
+    isActive: (path) =>
+      path === "/admin" || (path.startsWith("/admin/pages") && path !== "/admin/pages/home"),
+  },
+  {
+    // Shortcut into the Home page editor, where the banner is managed with the rest of the page.
+    label: "Homepage Banner",
+    to: "/admin/pages/home",
+    icon: PanelTop,
+    hash: "hero-banner",
+    isActive: (path) => path === "/admin/pages/home",
+  },
+  {
+    label: "Products & Systems",
+    to: "/admin/products",
+    icon: Boxes,
+    isActive: (path) => path.startsWith("/admin/products") || path === "/admin/categories",
+  },
+  {
+    label: "Images & Gallery",
+    to: "/admin/media",
+    icon: ImageIcon,
+    isActive: (path) => path.startsWith("/admin/media"),
+  },
+  {
+    label: "Website Settings",
+    to: "/admin/settings",
+    icon: Settings,
+    isActive: (path) => path.startsWith("/admin/settings"),
+  },
+];
+
 function AdminLayout() {
   const { user, isAdmin, isLoading, signOut } = useAdminAuth();
   const navigate = useNavigate();
   const location = useLocation();
+  const [mobileNavOpen, setMobileNavOpen] = useState(false);
 
   const isLoginPage = location.pathname === "/admin/login";
 
@@ -36,6 +85,9 @@ function AdminLayout() {
     }
   }, [user, isAdmin, isLoading, isLoginPage, navigate]);
 
+  // Close the mobile menu after navigating.
+  useEffect(() => setMobileNavOpen(false), [location.pathname]);
+
   if (isLoginPage) {
     return <Outlet />;
   }
@@ -43,8 +95,8 @@ function AdminLayout() {
   if (isLoading) {
     return (
       <div className="flex min-h-screen items-center justify-center bg-background">
-        <div className="text-center space-y-3">
-          <Loader2 className="size-8 animate-spin text-primary mx-auto" />
+        <div className="text-center space-y-3" role="status">
+          <Loader2 className="size-8 animate-spin text-primary mx-auto" aria-hidden="true" />
           <p className="text-sm font-medium text-muted-foreground">Opening website editor...</p>
         </div>
       </div>
@@ -74,89 +126,118 @@ function AdminLayout() {
     );
   }
 
-  const navLinks = [
-    { label: "Website Pages", to: "/admin", icon: FileText, exact: true },
-    { label: "Products & Systems", to: "/admin/products", icon: Boxes },
-    { label: "Images & Gallery", to: "/admin/media", icon: ImageIcon },
-    { label: "Hero Slider", to: "/admin/hero", icon: ImageIcon },
-    { label: "Website Settings", to: "/admin/settings", icon: Settings },
-  ];
+  const sidebarContent = (
+    <>
+      <div className="p-4 space-y-4">
+        <div className="rounded-lg bg-muted/60 p-3 text-xs">
+          <span className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wider block mb-1">
+            Signed In As
+          </span>
+          <span className="font-medium text-foreground truncate block" title={user.email}>
+            {user.email}
+          </span>
+        </div>
+
+        <nav className="space-y-1.5" aria-label="Admin sections">
+          {navLinks.map((item) => {
+            const Icon = item.icon;
+            const active = item.isActive(location.pathname);
+            return (
+              <Link
+                key={item.label}
+                to={item.to}
+                {...(item.hash ? { hash: item.hash } : {})}
+                aria-current={active ? "page" : undefined}
+                className={`flex min-h-10 items-center gap-3 px-3.5 py-2.5 rounded-lg text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${
+                  active
+                    ? "bg-primary text-primary-foreground shadow-xs font-semibold"
+                    : "text-muted-foreground hover:bg-muted hover:text-foreground"
+                }`}
+              >
+                <Icon className="size-4 shrink-0" aria-hidden="true" />
+                {item.label}
+              </Link>
+            );
+          })}
+        </nav>
+      </div>
+
+      <div className="mt-auto p-4 border-t border-border space-y-2">
+        <a
+          href={publicSiteUrl("/")}
+          target="_blank"
+          rel="noreferrer"
+          className="flex min-h-10 items-center gap-2 px-3 py-2 rounded-lg text-xs font-medium text-muted-foreground hover:bg-muted hover:text-foreground transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+        >
+          <ExternalLink className="size-3.5 text-primary" aria-hidden="true" />
+          View Live Website
+        </a>
+        <button
+          type="button"
+          onClick={async () => {
+            await signOut();
+            navigate({ to: "/admin/login" });
+          }}
+          className="w-full flex min-h-10 items-center gap-2.5 px-3 py-2 rounded-lg text-xs font-semibold text-destructive hover:bg-destructive/10 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+        >
+          <LogOut className="size-3.5 shrink-0" aria-hidden="true" />
+          Sign Out
+        </button>
+      </div>
+    </>
+  );
+
+  const brand = (
+    <div className="flex items-center gap-3">
+      {/* The logo artwork is white, so it sits on a brand-green tile. */}
+      <span className="flex size-10 shrink-0 items-center justify-center rounded-md bg-forest p-1.5">
+        <img src={images.logo} alt="Acoflex" className="h-full w-auto object-contain" />
+      </span>
+      <div className="leading-tight">
+        <span className="font-display font-bold text-sm tracking-tight block">Acoflex</span>
+        <span className="text-[11px] font-semibold text-muted-foreground block">
+          Website Editor
+        </span>
+      </div>
+    </div>
+  );
 
   return (
     <div className="flex min-h-screen bg-slate-50/60 dark:bg-background">
-      {/* Friendly Admin Sidebar */}
-      <aside className="w-64 border-r border-border bg-card flex flex-col shrink-0">
-        <div className="h-16 border-b border-border flex items-center px-6 gap-3">
-          <img src={images.logo} alt="Acoflex" className="h-8 w-auto object-contain" />
-          <div className="leading-tight">
-            <span className="font-display font-bold text-sm tracking-tight block">Acoflex</span>
-            <span className="text-[11px] font-semibold text-muted-foreground block">
-              Website Editor
-            </span>
-          </div>
-        </div>
-
-        <div className="p-4 space-y-4">
-          <div className="rounded-lg bg-muted/60 p-3 text-xs">
-            <span className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wider block mb-1">
-              Signed In As
-            </span>
-            <span className="font-medium text-foreground truncate block">{user.email}</span>
-          </div>
-
-          <nav className="space-y-1.5">
-            {navLinks.map((item) => {
-              const Icon = item.icon;
-              const isActive = item.exact
-                ? location.pathname === item.to || location.pathname.startsWith("/admin/pages")
-                : location.pathname.startsWith(item.to);
-
-              return (
-                <Link
-                  key={item.to}
-                  to={item.to}
-                  className={`flex items-center gap-3 px-3.5 py-2.5 rounded-lg text-sm font-medium transition-colors ${
-                    isActive
-                      ? "bg-primary text-primary-foreground shadow-xs font-semibold"
-                      : "text-muted-foreground hover:bg-muted hover:text-foreground"
-                  }`}
-                >
-                  <Icon className="size-4 shrink-0" />
-                  {item.label}
-                </Link>
-              );
-            })}
-          </nav>
-        </div>
-
-        <div className="mt-auto p-4 border-t border-border space-y-2">
-          <a
-            href={import.meta.env.VITE_PUBLIC_WEBSITE_URL || "https://acoflex.com"}
-            target="_blank"
-            rel="noreferrer"
-            className="flex items-center justify-between px-3 py-2 rounded-lg text-xs font-medium text-muted-foreground hover:bg-muted hover:text-foreground transition-colors"
-          >
-            <span className="inline-flex items-center gap-2">
-              <ExternalLink className="size-3.5 text-primary" />
-              View Live Website
-            </span>
-          </a>
-          <button
-            onClick={async () => {
-              await signOut();
-              navigate({ to: "/admin/login" });
-            }}
-            className="w-full flex items-center gap-2.5 px-3 py-2 rounded-lg text-xs font-semibold text-destructive hover:bg-destructive/10 transition-colors"
-          >
-            <LogOut className="size-3.5 shrink-0" />
-            Sign Out
-          </button>
-        </div>
+      {/* Desktop sidebar */}
+      <aside className="sticky top-0 hidden h-screen w-64 shrink-0 flex-col overflow-y-auto border-r border-border bg-card lg:flex">
+        <div className="h-16 border-b border-border flex items-center px-6">{brand}</div>
+        {sidebarContent}
       </aside>
 
+      {/* Mobile / tablet navigation drawer */}
+      <Sheet open={mobileNavOpen} onOpenChange={setMobileNavOpen}>
+        <SheetContent side="left" className="flex w-72 max-w-[85vw] flex-col gap-0 p-0">
+          <div className="h-16 border-b border-border flex items-center px-5">{brand}</div>
+          <SheetTitle className="sr-only">Admin menu</SheetTitle>
+          <SheetDescription className="sr-only">
+            Choose a section of the website editor
+          </SheetDescription>
+          {sidebarContent}
+        </SheetContent>
+      </Sheet>
+
       {/* Main Working Area */}
-      <div className="flex-1 flex flex-col min-w-0 overflow-y-auto">
-        <main className="p-8 max-w-5xl w-full mx-auto flex-1">
+      <div className="flex min-w-0 flex-1 flex-col">
+        <header className="sticky top-0 z-40 flex h-14 items-center justify-between gap-3 border-b border-border bg-card/95 px-4 backdrop-blur lg:hidden">
+          {brand}
+          <Button
+            type="button"
+            variant="outline"
+            size="icon"
+            onClick={() => setMobileNavOpen(true)}
+            aria-label="Open menu"
+            aria-expanded={mobileNavOpen}
+          >
+            <Menu />
+          </Button>
+        </header>
+        <main className="mx-auto w-full max-w-5xl flex-1 px-4 py-6 sm:px-6 lg:p-8">
           <Outlet />
         </main>
       </div>

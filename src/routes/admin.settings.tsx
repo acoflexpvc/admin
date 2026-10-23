@@ -6,19 +6,11 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
-import {
-  Save,
-  Send,
-  Loader2,
-  CheckCircle2,
-  AlertCircle,
-  Clock,
-  MapPin,
-  Mail,
-  Building,
-  Phone,
-  Share2,
-} from "lucide-react";
+import { Save, Send, Loader2, Clock, MapPin, Building, Share2 } from "lucide-react";
+import { StatusBanner, type StatusMessage } from "@/components/admin/status-banner";
+import { PublishStateBadge } from "@/components/admin/publish-state-badge";
+import { ConfirmDialog } from "@/components/admin/confirm-dialog";
+import { getErrorMessage } from "@/lib/errors";
 
 export const Route = createFileRoute("/admin/settings")({
   head: () => ({
@@ -64,10 +56,8 @@ function AdminSiteSettings() {
   const [initialData, setInitialData] = useState<SiteSettingsData>({});
   const [emailsRaw, setEmailsRaw] = useState("");
   const [initialEmailsRaw, setInitialEmailsRaw] = useState("");
-  const [statusMessage, setStatusMessage] = useState<{
-    type: "success" | "error";
-    text: string;
-  } | null>(null);
+  const [statusMessage, setStatusMessage] = useState<StatusMessage | null>(null);
+  const [confirmPublish, setConfirmPublish] = useState(false);
 
   // 1. Fetch current settings (Draft preferred, published fallback)
   const {
@@ -80,25 +70,21 @@ function AdminSiteSettings() {
     queryFn: async () => {
       if (!supabase) throw new Error("Database connection is not available.");
 
-      const { data: draftData, error: draftErr } = await supabase
+      const { data: rows, error: rowsErr } = await supabase
         .from("site_settings")
-        .select("*")
-        .eq("setting_key", "global")
-        .eq("version", "draft")
-        .maybeSingle();
+        .select("version, data")
+        .eq("setting_key", "global");
 
-      if (draftErr) throw draftErr;
-      if (draftData) return { ...draftData, isDraft: true };
-
-      const { data: pubData, error: pubErr } = await supabase
-        .from("site_settings")
-        .select("*")
-        .eq("setting_key", "global")
-        .eq("version", "published")
-        .maybeSingle();
-
-      if (pubErr) throw pubErr;
-      return { ...pubData, isDraft: false };
+      if (rowsErr) throw rowsErr;
+      const draftData = rows?.find((row) => row.version === "draft");
+      const pubData = rows?.find((row) => row.version === "published");
+      const current = draftData ?? pubData;
+      return {
+        data: current?.data,
+        // A draft row stays after publishing, so compare it with the live version.
+        isDraft:
+          !!draftData && JSON.stringify(draftData.data) !== JSON.stringify(pubData?.data ?? null),
+      };
     },
   });
 
@@ -172,6 +158,7 @@ function AdminSiteSettings() {
         e.returnValue = "You have unsaved changes. Are you sure you want to leave?";
         return e.returnValue;
       }
+      return undefined;
     };
     window.addEventListener("beforeunload", handleBeforeUnload);
     return () => window.removeEventListener("beforeunload", handleBeforeUnload);
@@ -208,10 +195,10 @@ function AdminSiteSettings() {
       });
       queryClient.invalidateQueries({ queryKey: ["admin_site_settings"] });
     },
-    onError: (err: Error) => {
+    onError: (err: unknown) => {
       setStatusMessage({
         type: "error",
-        text: `Unable to save changes: ${err.message}`,
+        text: `Unable to save changes: ${getErrorMessage(err)}`,
       });
     },
   });
@@ -231,7 +218,8 @@ function AdminSiteSettings() {
         emails: parsedEmails,
       };
 
-      await supabase.from("site_settings").upsert(
+      // Stop if the working copy cannot be saved, rather than publishing an older draft.
+      const { error: draftErr } = await supabase.from("site_settings").upsert(
         {
           setting_key: "global",
           version: "draft",
@@ -240,6 +228,7 @@ function AdminSiteSettings() {
         },
         { onConflict: "setting_key,version" },
       );
+      if (draftErr) throw draftErr;
 
       const { error } = await supabase.rpc("publish_site_settings", {
         target_key: "global",
@@ -258,16 +247,16 @@ function AdminSiteSettings() {
       queryClient.invalidateQueries({ queryKey: ["admin_site_settings"] });
       queryClient.invalidateQueries({ queryKey: ["site-settings", "published"] });
     },
-    onError: (err: Error) => {
+    onError: (err: unknown) => {
       setStatusMessage({
         type: "error",
-        text: `Unable to publish: ${err.message}`,
+        text: `Unable to publish: ${getErrorMessage(err)}`,
       });
     },
   });
 
-  const handleSaveDraft = (e: React.FormEvent) => {
-    e.preventDefault();
+  const handleSaveDraft = (e?: React.FormEvent) => {
+    e?.preventDefault();
     setStatusMessage(null);
 
     const parsedEmails = emailsRaw
@@ -283,16 +272,7 @@ function AdminSiteSettings() {
     saveDraftMutation.mutate(updated);
   };
 
-  const handlePublish = () => {
-    if (
-      window.confirm(
-        "Are you ready to publish these changes? They will immediately appear on the live website.",
-      )
-    ) {
-      setStatusMessage(null);
-      publishMutation.mutate();
-    }
-  };
+  const handlePublish = () => setConfirmPublish(true);
 
   if (isLoading) {
     return (
@@ -306,7 +286,7 @@ function AdminSiteSettings() {
     return (
       <div className="rounded-xl border border-destructive/20 bg-destructive/10 p-6 text-destructive">
         <p className="font-semibold">Unable to load settings</p>
-        <p className="text-sm mt-1">{(fetchError as Error).message}</p>
+        <p className="text-sm mt-1">{getErrorMessage(fetchError)}</p>
         <Button onClick={() => refetch()} variant="outline" className="mt-4">
           Try Again
         </Button>
@@ -317,41 +297,25 @@ function AdminSiteSettings() {
   return (
     <div className="space-y-6">
       {/* Top Header & Friendly Actions */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-6 border-b border-border">
-        <div>
+      <div className="flex flex-col lg:flex-row lg:items-end justify-between gap-4 pb-6 border-b border-border">
+        <div className="min-w-0">
           <div className="flex items-center gap-2.5 flex-wrap">
             <h1 className="text-2xl font-bold tracking-tight text-foreground">
               General Website Settings
             </h1>
-            {/* 3 Explicit States */}
-            {isDirty ? (
-              <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-semibold bg-amber-500/15 text-amber-700 dark:text-amber-400 border border-amber-500/30">
-                <span className="size-1.5 rounded-full bg-amber-500 animate-pulse" />
-                Changes not saved
-              </span>
-            ) : settingsRecord?.isDraft ? (
-              <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-semibold bg-sky-500/10 text-sky-700 dark:text-sky-400 border border-sky-500/20">
-                <Clock className="size-3" />
-                Draft saved — not live yet
-              </span>
-            ) : (
-              <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-semibold bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 border border-emerald-500/20">
-                <CheckCircle2 className="size-3" />
-                Published on website
-              </span>
-            )}
+            <PublishStateBadge isDirty={isDirty} hasDraft={settingsRecord?.isDraft ?? false} />
           </div>
           <p className="text-sm text-muted-foreground mt-1">
             Update your business phone numbers, emails, office address, and top contact banner.
           </p>
         </div>
 
-        <div className="flex items-center gap-3">
+        <div className="flex flex-wrap items-center gap-3">
           <Button
             type="button"
             variant="outline"
             size="default"
-            onClick={handleSaveDraft}
+            onClick={() => handleSaveDraft()}
             disabled={saveDraftMutation.isPending || publishMutation.isPending}
             className="gap-2 font-medium"
           >
@@ -381,22 +345,7 @@ function AdminSiteSettings() {
       </div>
 
       {/* Status Notice */}
-      {statusMessage && (
-        <div
-          className={`flex items-start gap-3 rounded-lg border p-4 text-sm ${
-            statusMessage.type === "success"
-              ? "border-emerald-500/30 bg-emerald-500/10 text-emerald-900 dark:text-emerald-200"
-              : "border-destructive/30 bg-destructive/10 text-destructive"
-          }`}
-        >
-          {statusMessage.type === "success" ? (
-            <CheckCircle2 className="size-5 shrink-0 text-emerald-600 dark:text-emerald-400 mt-0.5" />
-          ) : (
-            <AlertCircle className="size-5 shrink-0 text-destructive mt-0.5" />
-          )}
-          <p className="font-medium">{statusMessage.text}</p>
-        </div>
-      )}
+      <StatusBanner message={statusMessage} onDismiss={() => setStatusMessage(null)} />
 
       {/* Clear Forms */}
       <form onSubmit={handleSaveDraft} className="space-y-6">
@@ -560,7 +509,8 @@ function AdminSiteSettings() {
               <Label htmlFor="social-whatsapp">WhatsApp Chat Link or Number</Label>
               <Input
                 id="social-whatsapp"
-                type="url"
+                type="text"
+                inputMode="url"
                 value={formData.social_links?.whatsapp || ""}
                 onChange={(e) =>
                   setFormData({
@@ -684,7 +634,7 @@ function AdminSiteSettings() {
         </div>
 
         {/* Bottom Actions */}
-        <div className="flex justify-end gap-3 pt-4 border-t border-border">
+        <div className="flex flex-wrap justify-end gap-3 pt-4 border-t border-border">
           <Button
             type="submit"
             variant="outline"
@@ -706,6 +656,18 @@ function AdminSiteSettings() {
           </Button>
         </div>
       </form>
+
+      <ConfirmDialog
+        open={confirmPublish}
+        onOpenChange={setConfirmPublish}
+        title="Publish website settings?"
+        description="The new contact details, social links and footer text will appear on every page of the live website straight away."
+        confirmLabel="Publish Changes"
+        onConfirm={() => {
+          setStatusMessage(null);
+          publishMutation.mutate();
+        }}
+      />
     </div>
   );
 }

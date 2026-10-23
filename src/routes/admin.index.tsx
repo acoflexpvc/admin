@@ -2,6 +2,8 @@ import { createFileRoute, Link } from "@tanstack/react-router";
 import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/lib/supabase";
 import { Button } from "@/components/ui/button";
+import { getErrorMessage } from "@/lib/errors";
+import { publicSiteUrl } from "@/lib/site-url";
 import {
   Home,
   Info,
@@ -45,7 +47,8 @@ const pageMetadata: Record<
 > = {
   home: {
     label: "Home Page",
-    description: "Main website introduction, headline banner, and overview highlights",
+    description:
+      "Homepage hero banner (heading, buttons and up to 4 images) and overview highlights",
     icon: Home,
   },
   about: {
@@ -127,7 +130,7 @@ function AdminPagesSelection() {
     return (
       <div className="rounded-xl border border-destructive/20 bg-destructive/10 p-6 text-destructive">
         <p className="font-semibold">Unable to load pages</p>
-        <p className="text-sm mt-1">{(error as Error).message}</p>
+        <p className="text-sm mt-1">{getErrorMessage(error)}</p>
         <Button onClick={() => refetch()} variant="outline" className="mt-4">
           Try Again
         </Button>
@@ -135,10 +138,7 @@ function AdminPagesSelection() {
     );
   }
 
-  const getPublicPath = (slug: string) => {
-    const base = import.meta.env.VITE_PUBLIC_WEBSITE_URL || "https://acoflex.com";
-    return slug === "home" ? `${base}/` : `${base}/${slug}`;
-  };
+  const getPublicPath = (slug: string) => publicSiteUrl(slug === "home" ? "/" : `/${slug}`);
 
   // Pre-sort pages in natural reading order
   const orderedSlugs = [
@@ -214,8 +214,9 @@ function AdminPagesSelection() {
                     href={publicUrl}
                     target="_blank"
                     rel="noreferrer"
-                    className="p-1.5 text-muted-foreground hover:text-foreground hover:bg-muted rounded-md transition-colors"
+                    className="p-2 text-muted-foreground hover:text-foreground hover:bg-muted rounded-md transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                     title="View this page on the live website"
+                    aria-label={`View ${meta.label} on the live website`}
                   >
                     <ExternalLink className="size-4" />
                   </a>

@@ -7,16 +7,17 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Switch } from "@/components/ui/switch";
+import { FolderTree, Plus, Edit2, Loader2, ArrowUpDown, ExternalLink } from "lucide-react";
 import {
-  FolderTree,
-  Plus,
-  Edit2,
-  CheckCircle2,
-  AlertCircle,
-  Loader2,
-  ArrowUpDown,
-  ExternalLink,
-} from "lucide-react";
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import { StatusBanner, type StatusMessage } from "@/components/admin/status-banner";
+import { getErrorMessage } from "@/lib/errors";
+import { publicSiteUrl } from "@/lib/site-url";
 
 export const Route = createFileRoute("/admin/categories")({
   head: () => ({
@@ -49,10 +50,8 @@ function AdminCategories() {
 
   const [editingCategory, setEditingCategory] = useState<Partial<ProductCategory> | null>(null);
   const [isModalOpen, setIsModalOpen] = useState(false);
-  const [statusMessage, setStatusMessage] = useState<{
-    type: "success" | "error";
-    text: string;
-  } | null>(null);
+  const [statusMessage, setStatusMessage] = useState<StatusMessage | null>(null);
+  const [formError, setFormError] = useState<string | null>(null);
 
   // 1. Fetch categories directly (admin has full access via RLS)
   const {
@@ -128,11 +127,9 @@ function AdminCategories() {
       queryClient.invalidateQueries({ queryKey: ["admin_categories"] });
       queryClient.invalidateQueries({ queryKey: ["product_categories", "published"] });
     },
-    onError: (err: Error) => {
-      setStatusMessage({
-        type: "error",
-        text: `Error saving category: ${err.message}`,
-      });
+    onError: (err: unknown) => {
+      // Shown inside the dialog, where the client is looking.
+      setFormError(`Error saving category: ${getErrorMessage(err)}`);
     },
   });
 
@@ -159,16 +156,17 @@ function AdminCategories() {
       queryClient.invalidateQueries({ queryKey: ["admin_categories"] });
       queryClient.invalidateQueries({ queryKey: ["product_categories", "published"] });
     },
-    onError: (err: Error) => {
+    onError: (err: unknown) => {
       setStatusMessage({
         type: "error",
-        text: `Failed to toggle category: ${err.message}`,
+        text: `Failed to toggle category: ${getErrorMessage(err)}`,
       });
     },
   });
 
   const handleOpenEdit = (category: ProductCategory) => {
     setEditingCategory(category);
+    setFormError(null);
     setIsModalOpen(true);
   };
 
@@ -185,6 +183,7 @@ function AdminCategories() {
       sort_order: (categoriesList?.length || 0) * 10 + 10,
       is_published: true,
     });
+    setFormError(null);
     setIsModalOpen(true);
   };
 
@@ -193,12 +192,10 @@ function AdminCategories() {
     if (!editingCategory) return;
 
     if (!editingCategory.name?.trim() || !editingCategory.slug?.trim()) {
-      setStatusMessage({
-        type: "error",
-        text: "Name and Slug are required fields.",
-      });
+      setFormError("Name and Slug are required fields.");
       return;
     }
+    setFormError(null);
 
     saveCategoryMutation.mutate(editingCategory);
   };
@@ -215,7 +212,7 @@ function AdminCategories() {
     return (
       <div className="rounded-xl border border-destructive/20 bg-destructive/10 p-6 text-destructive">
         <p className="font-semibold">Error loading categories</p>
-        <p className="text-sm mt-1">{(error as Error).message}</p>
+        <p className="text-sm mt-1">{getErrorMessage(error)}</p>
         <Button onClick={() => refetch()} variant="outline" className="mt-4">
           Try Again
         </Button>
@@ -233,40 +230,30 @@ function AdminCategories() {
           </p>
         </div>
 
-        <Button onClick={handleOpenCreate} variant="default" size="sm" className="gap-1.5">
+        <Button
+          onClick={handleOpenCreate}
+          variant="default"
+          size="sm"
+          className="gap-1.5 self-start sm:self-auto"
+        >
           <Plus className="size-4" /> Add Category
         </Button>
       </div>
 
-      {statusMessage && (
-        <div
-          className={`flex items-start gap-3 rounded-lg border p-4 text-sm ${
-            statusMessage.type === "success"
-              ? "border-emerald-500/30 bg-emerald-500/10 text-emerald-800 dark:text-emerald-200"
-              : "border-destructive/30 bg-destructive/10 text-destructive"
-          }`}
-        >
-          {statusMessage.type === "success" ? (
-            <CheckCircle2 className="size-5 shrink-0 text-emerald-600 dark:text-emerald-400 mt-0.5" />
-          ) : (
-            <AlertCircle className="size-5 shrink-0 text-destructive mt-0.5" />
-          )}
-          <p className="font-medium">{statusMessage.text}</p>
-        </div>
-      )}
+      <StatusBanner message={statusMessage} onDismiss={() => setStatusMessage(null)} />
 
       <div className="grid grid-cols-1 gap-3">
         {categoriesList?.map((cat) => (
           <div
             key={cat.id}
-            className="flex items-center justify-between p-4 rounded-xl border border-border bg-card shadow-xs hover:border-primary/40 transition-colors"
+            className="flex flex-col gap-4 p-4 rounded-xl border border-border bg-card shadow-xs hover:border-primary/40 transition-colors md:flex-row md:items-center md:justify-between"
           >
-            <div className="flex items-start gap-3.5">
+            <div className="flex min-w-0 items-start gap-3.5">
               <div className="p-2.5 rounded-lg bg-primary/10 text-primary mt-0.5">
                 <FolderTree className="size-5" />
               </div>
-              <div className="space-y-1">
-                <div className="flex items-center gap-2">
+              <div className="min-w-0 space-y-1">
+                <div className="flex flex-wrap items-center gap-2">
                   <h3 className="font-semibold text-foreground text-base">{cat.name}</h3>
                   <code className="text-xs bg-muted text-muted-foreground px-2 py-0.5 rounded">
                     slug: {cat.slug}
@@ -295,7 +282,7 @@ function AdminCategories() {
               </div>
             </div>
 
-            <div className="flex items-center gap-3">
+            <div className="flex flex-wrap items-center gap-3">
               <div className="flex items-center gap-2 mr-2">
                 <Label htmlFor={`pub-${cat.id}`} className="text-xs text-muted-foreground">
                   Live
@@ -310,11 +297,12 @@ function AdminCategories() {
                 />
               </div>
               <a
-                href={`${import.meta.env.VITE_PUBLIC_WEBSITE_URL || "https://acoflex.com"}/products/${cat.slug}`}
+                href={publicSiteUrl(`/products/${cat.slug}`)}
                 target="_blank"
                 rel="noreferrer"
-                className="p-2 text-muted-foreground hover:text-foreground hover:bg-muted rounded-md transition-colors"
+                className="p-2 text-muted-foreground hover:text-foreground hover:bg-muted rounded-md transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                 title="View on site"
+                aria-label={`View ${cat.name} on the website`}
               >
                 <ExternalLink className="size-4" />
               </a>
@@ -332,22 +320,17 @@ function AdminCategories() {
       </div>
 
       {/* Edit / Create Category Modal */}
-      {isModalOpen && editingCategory && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4 backdrop-blur-xs">
-          <div className="max-h-[90vh] w-full max-w-2xl overflow-hidden rounded-xl border border-border bg-card shadow-2xl flex flex-col">
-            <div className="flex items-center justify-between border-b border-border px-6 py-4">
-              <h3 className="font-semibold text-foreground text-lg">
-                {editingCategory.id ? "Edit Category" : "New Category"}
-              </h3>
-              <button
-                onClick={() => setIsModalOpen(false)}
-                className="text-muted-foreground hover:text-foreground text-sm font-semibold"
-              >
-                ✕
-              </button>
-            </div>
-
-            <form onSubmit={handleSubmit} className="flex-1 overflow-auto p-6 space-y-4">
+      <Dialog open={isModalOpen && !!editingCategory} onOpenChange={setIsModalOpen}>
+        <DialogContent className="max-w-2xl">
+          <DialogHeader>
+            <DialogTitle>{editingCategory?.id ? "Edit Category" : "New Category"}</DialogTitle>
+            <DialogDescription>
+              Saved changes appear on the website straight away for published categories.
+            </DialogDescription>
+          </DialogHeader>
+          {editingCategory && (
+            <form onSubmit={handleSubmit} className="space-y-4">
+              <StatusBanner message={formError ? { type: "error", text: formError } : null} />
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div className="space-y-1.5">
                   <Label htmlFor="cat-name">Category Name *</Label>
@@ -430,7 +413,7 @@ function AdminCategories() {
                 </div>
               </div>
 
-              <div className="flex items-center gap-6 pt-2">
+              <div className="flex flex-wrap items-center gap-x-6 gap-y-3 pt-2">
                 <div className="flex items-center gap-2">
                   <Switch
                     id="cat-coming-soon"
@@ -458,7 +441,7 @@ function AdminCategories() {
                 </div>
               </div>
 
-              <div className="border-t border-border pt-4 flex justify-end gap-2">
+              <div className="border-t border-border pt-4 flex flex-wrap justify-end gap-2">
                 <Button type="button" variant="outline" onClick={() => setIsModalOpen(false)}>
                   Cancel
                 </Button>
@@ -469,13 +452,13 @@ function AdminCategories() {
                   className="gap-2"
                 >
                   {saveCategoryMutation.isPending && <Loader2 className="size-4 animate-spin" />}
-                  Save Category
+                  {saveCategoryMutation.isPending ? "Saving…" : "Save Category"}
                 </Button>
               </div>
             </form>
-          </div>
-        </div>
-      )}
+          )}
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

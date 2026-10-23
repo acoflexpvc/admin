@@ -1,5 +1,5 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/lib/supabase";
 import { Button } from "@/components/ui/button";
@@ -13,13 +13,21 @@ import {
   ExternalLink,
   Search,
   Loader2,
-  AlertCircle,
-  CheckCircle2,
   FileImage,
   Copy,
   Check,
 } from "lucide-react";
 import type { MediaAsset } from "@/components/admin-media-picker";
+import {
+  Dialog,
+  DialogContent,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import { StatusBanner, type StatusMessage } from "@/components/admin/status-banner";
+import { ConfirmDialog } from "@/components/admin/confirm-dialog";
+import { getErrorMessage } from "@/lib/errors";
 
 export const Route = createFileRoute("/admin/media")({
   head: () => ({
@@ -41,10 +49,9 @@ function AdminMediaLibrary() {
   const [editingAsset, setEditingAsset] = useState<MediaAsset | null>(null);
   const [editAltText, setEditAltText] = useState("");
   const [copiedId, setCopiedId] = useState<string | null>(null);
-  const [statusMessage, setStatusMessage] = useState<{
-    type: "success" | "error";
-    text: string;
-  } | null>(null);
+  const [pendingDelete, setPendingDelete] = useState<MediaAsset | null>(null);
+  const [statusMessage, setStatusMessage] = useState<StatusMessage | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   // 1. Fetch Media Assets
   const {
@@ -129,10 +136,10 @@ function AdminMediaLibrary() {
       setUploadAlt("");
       queryClient.invalidateQueries({ queryKey: ["admin_media_assets"] });
     },
-    onError: (err: Error) => {
+    onError: (err: unknown) => {
       setStatusMessage({
         type: "error",
-        text: `Upload failed: ${err.message}`,
+        text: `Upload failed: ${getErrorMessage(err)}`,
       });
     },
   });
@@ -157,10 +164,10 @@ function AdminMediaLibrary() {
       setEditingAsset(null);
       queryClient.invalidateQueries({ queryKey: ["admin_media_assets"] });
     },
-    onError: (err: Error) => {
+    onError: (err: unknown) => {
       setStatusMessage({
         type: "error",
-        text: `Update failed: ${err.message}`,
+        text: `Update failed: ${getErrorMessage(err)}`,
       });
     },
   });
@@ -192,36 +199,33 @@ function AdminMediaLibrary() {
       });
       queryClient.invalidateQueries({ queryKey: ["admin_media_assets"] });
     },
-    onError: (err: Error) => {
+    onError: (err: unknown) => {
       setStatusMessage({
         type: "error",
-        text: `Failed to delete media asset: ${err.message}`,
+        text: `Failed to delete media asset: ${getErrorMessage(err)}`,
       });
     },
   });
 
   const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     setStatusMessage(null);
-    const files = e.target.files;
-    if (!files || files.length === 0) return;
-
-    uploadMutation.mutate({ file: files[0], altText: uploadAlt });
+    const file = e.target.files?.[0];
     e.target.value = "";
+    if (!file) return;
+
+    uploadMutation.mutate({ file, altText: uploadAlt });
   };
 
-  const handleCopyUrl = (asset: MediaAsset) => {
-    navigator.clipboard.writeText(asset.public_url);
-    setCopiedId(asset.id);
-    setTimeout(() => setCopiedId(null), 2000);
-  };
-
-  const handleDelete = (asset: MediaAsset) => {
-    if (
-      window.confirm(
-        `Are you sure you want to delete "${asset.filename}"? This action cannot be undone.`,
-      )
-    ) {
-      deleteMutation.mutate(asset);
+  const handleCopyUrl = async (asset: MediaAsset) => {
+    try {
+      await navigator.clipboard.writeText(asset.public_url);
+      setCopiedId(asset.id);
+      setTimeout(() => setCopiedId(null), 2000);
+    } catch {
+      setStatusMessage({
+        type: "error",
+        text: "Could not copy the link. Please copy it manually.",
+      });
     }
   };
 
@@ -261,55 +265,51 @@ function AdminMediaLibrary() {
             </div>
           </div>
 
-          <div className="flex flex-col sm:flex-row items-center gap-2.5 w-full md:w-auto">
+          <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2.5 w-full md:w-auto">
+            <Label htmlFor="upload-alt" className="sr-only">
+              Photo description
+            </Label>
             <Input
+              id="upload-alt"
               placeholder="Photo description (optional)..."
               value={uploadAlt}
               onChange={(e) => setUploadAlt(e.target.value)}
-              className="w-full sm:w-60 h-10 text-xs bg-card"
+              className="w-full sm:w-60 h-10 text-sm bg-card"
             />
-            <label className="w-full sm:w-auto inline-flex cursor-pointer items-center justify-center gap-2 h-10 px-5 rounded-md bg-gold text-forest-deep text-sm font-semibold hover:bg-gold/90 transition-colors shrink-0 shadow-xs">
-              {uploadMutation.isPending ? (
-                <Loader2 className="size-4 animate-spin" />
-              ) : (
-                <Upload className="size-4" />
-              )}
-              Select & Upload Photo
-              <input
-                type="file"
-                accept="image/webp,image/jpeg,image/png"
-                className="hidden"
-                onChange={handleFileUpload}
-                disabled={uploadMutation.isPending}
-              />
-            </label>
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept="image/webp,image/jpeg,image/png"
+              className="hidden"
+              tabIndex={-1}
+              aria-hidden="true"
+              onChange={handleFileUpload}
+            />
+            <Button
+              type="button"
+              variant="gold"
+              onClick={() => fileInputRef.current?.click()}
+              disabled={uploadMutation.isPending}
+              className="h-10 px-5 shadow-xs"
+            >
+              {uploadMutation.isPending ? <Loader2 className="animate-spin" /> : <Upload />}
+              {uploadMutation.isPending ? "Uploading…" : "Select & Upload Photo"}
+            </Button>
           </div>
         </div>
       </div>
 
-      {/* Status Alert */}
-      {statusMessage && (
-        <div
-          className={`flex items-start gap-3 rounded-lg border p-4 text-sm ${
-            statusMessage.type === "success"
-              ? "border-emerald-500/30 bg-emerald-500/10 text-emerald-800 dark:text-emerald-200"
-              : "border-destructive/30 bg-destructive/10 text-destructive"
-          }`}
-        >
-          {statusMessage.type === "success" ? (
-            <CheckCircle2 className="size-5 shrink-0 text-emerald-600 dark:text-emerald-400 mt-0.5" />
-          ) : (
-            <AlertCircle className="size-5 shrink-0 text-destructive mt-0.5" />
-          )}
-          <p className="font-medium">{statusMessage.text}</p>
-        </div>
-      )}
+      <StatusBanner message={statusMessage} onDismiss={() => setStatusMessage(null)} />
 
       {/* Filter / Search Bar */}
-      <div className="flex items-center gap-3">
-        <div className="relative flex-1 max-w-md">
-          <Search className="absolute left-3 top-2.5 size-4 text-muted-foreground" />
+      <div className="flex flex-wrap items-center gap-3">
+        <div className="relative flex-1 min-w-48 max-w-md">
+          <Search
+            className="pointer-events-none absolute left-3 top-2.5 size-4 text-muted-foreground"
+            aria-hidden="true"
+          />
           <Input
+            aria-label="Search images"
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
             placeholder="Search assets by filename or alt text..."
@@ -329,7 +329,7 @@ function AdminMediaLibrary() {
       ) : error ? (
         <div className="rounded-xl border border-destructive/20 bg-destructive/10 p-6 text-destructive">
           <p className="font-semibold">Failed to load media catalog</p>
-          <p className="text-sm mt-1">{(error as Error).message}</p>
+          <p className="text-sm mt-1">{getErrorMessage(error)}</p>
           <Button onClick={() => refetch()} variant="outline" className="mt-4">
             Try Again
           </Button>
@@ -350,11 +350,14 @@ function AdminMediaLibrary() {
                     (e.target as HTMLElement).style.display = "none";
                   }}
                 />
-                <div className="absolute top-2 right-2 opacity-0 group-hover:opacity-100 transition-opacity flex gap-1">
+                {/* Always visible on touch screens; on larger screens shown on hover or keyboard focus. */}
+                <div className="absolute top-2 right-2 flex gap-1 transition-opacity sm:opacity-0 sm:group-hover:opacity-100 sm:group-focus-within:opacity-100">
                   <button
+                    type="button"
                     onClick={() => handleCopyUrl(asset)}
-                    className="p-1.5 rounded-md bg-black/60 text-white hover:bg-black/80 transition-colors"
-                    title="Copy CDN URL"
+                    className="p-2 rounded-md bg-black/60 text-white hover:bg-black/80 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white"
+                    title="Copy image link"
+                    aria-label={`Copy link for ${asset.filename}`}
                   >
                     {copiedId === asset.id ? (
                       <Check className="size-3.5 text-emerald-400" />
@@ -366,8 +369,9 @@ function AdminMediaLibrary() {
                     href={asset.public_url}
                     target="_blank"
                     rel="noreferrer"
-                    className="p-1.5 rounded-md bg-black/60 text-white hover:bg-black/80 transition-colors"
+                    className="p-2 rounded-md bg-black/60 text-white hover:bg-black/80 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white"
                     title="Open full size"
+                    aria-label={`Open ${asset.filename} full size`}
                   >
                     <ExternalLink className="size-3.5" />
                   </a>
@@ -375,7 +379,7 @@ function AdminMediaLibrary() {
               </div>
 
               <div className="p-3.5 flex-1 flex flex-col justify-between text-xs space-y-2">
-                <div>
+                <div className="min-w-0">
                   <h4 className="font-semibold text-foreground truncate" title={asset.filename}>
                     {asset.filename}
                   </h4>
@@ -384,7 +388,7 @@ function AdminMediaLibrary() {
                   </p>
                   <p className="text-[10px] text-muted-foreground/80 mt-1">
                     {(asset.file_size / 1024).toFixed(0)} KB ·{" "}
-                    {asset.mime_type.split("/")[1].toUpperCase()} ·{" "}
+                    {(asset.mime_type.split("/")[1] ?? asset.mime_type).toUpperCase()} ·{" "}
                     {new Date(asset.created_at).toLocaleDateString()}
                   </p>
                 </div>
@@ -393,19 +397,21 @@ function AdminMediaLibrary() {
                   <Button
                     variant="ghost"
                     size="sm"
-                    className="h-7 px-2 text-xs gap-1"
+                    className="h-8 px-2 text-xs gap-1"
+                    aria-label={`Edit description of ${asset.filename}`}
                     onClick={() => {
                       setEditingAsset(asset);
                       setEditAltText(asset.alt_text || "");
                     }}
                   >
-                    <Edit2 className="size-3" /> Edit Alt
+                    <Edit2 className="size-3" /> Edit Description
                   </Button>
                   <Button
                     variant="ghost"
                     size="sm"
-                    className="h-7 px-2 text-xs text-destructive hover:bg-destructive/10 gap-1"
-                    onClick={() => handleDelete(asset)}
+                    className="h-8 px-2 text-xs text-destructive hover:bg-destructive/10 gap-1"
+                    aria-label={`Delete ${asset.filename}`}
+                    onClick={() => setPendingDelete(asset)}
                     disabled={deleteMutation.isPending}
                   >
                     <Trash2 className="size-3" /> Delete
@@ -426,43 +432,68 @@ function AdminMediaLibrary() {
         </div>
       )}
 
-      {/* Edit Alt Text Modal */}
-      {editingAsset && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4 backdrop-blur-xs">
-          <div className="w-full max-w-md rounded-xl border border-border bg-card shadow-2xl p-6 space-y-4">
-            <h3 className="font-semibold text-foreground text-base">Edit Asset Metadata</h3>
+      {/* Edit Alt Text Dialog */}
+      <Dialog open={!!editingAsset} onOpenChange={(open) => !open && setEditingAsset(null)}>
+        <DialogContent className="max-w-md">
+          <form
+            className="space-y-4"
+            onSubmit={(e) => {
+              e.preventDefault();
+              if (editingAsset) {
+                updateMetadataMutation.mutate({ id: editingAsset.id, alt_text: editAltText });
+              }
+            }}
+          >
+            <DialogHeader>
+              <DialogTitle>Edit image description</DialogTitle>
+            </DialogHeader>
+            <p className="truncate text-xs text-muted-foreground" title={editingAsset?.filename}>
+              {editingAsset?.filename}
+            </p>
             <div className="space-y-1.5">
-              <Label htmlFor="edit-alt">Descriptive Alt Text</Label>
+              <Label htmlFor="edit-alt">Description (alt text)</Label>
               <Input
                 id="edit-alt"
                 value={editAltText}
                 onChange={(e) => setEditAltText(e.target.value)}
-                placeholder="Product photography description..."
+                placeholder="What the photo shows, e.g. CPVC pipes on the test rig"
               />
             </div>
-            <div className="flex justify-end gap-2 pt-2">
-              <Button variant="outline" size="sm" onClick={() => setEditingAsset(null)}>
+            <DialogFooter className="gap-2">
+              <Button type="button" variant="outline" onClick={() => setEditingAsset(null)}>
                 Cancel
               </Button>
               <Button
+                type="submit"
                 variant="gold"
-                size="sm"
-                onClick={() =>
-                  updateMetadataMutation.mutate({
-                    id: editingAsset.id,
-                    alt_text: editAltText,
-                  })
-                }
                 disabled={updateMetadataMutation.isPending}
                 className="gap-1.5"
               >
-                {updateMetadataMutation.isPending && <Loader2 className="size-4 animate-spin" />}
-                Save Changes
+                {updateMetadataMutation.isPending && <Loader2 className="animate-spin" />}
+                {updateMetadataMutation.isPending ? "Saving…" : "Save Changes"}
               </Button>
-            </div>
-          </div>
-        </div>
-      )}
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
+
+      <ConfirmDialog
+        open={!!pendingDelete}
+        onOpenChange={(open) => !open && setPendingDelete(null)}
+        title="Delete this image?"
+        description={
+          <>
+            <span className="block break-all font-medium text-foreground">
+              {pendingDelete?.filename}
+            </span>
+            It will be removed from the library. Any product or page still using it will show a
+            missing image. This cannot be undone.
+          </>
+        }
+        confirmLabel="Delete Image"
+        destructive
+        onConfirm={() => pendingDelete && deleteMutation.mutate(pendingDelete)}
+      />
     </div>
   );
 }

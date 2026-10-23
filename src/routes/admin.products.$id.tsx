@@ -12,20 +12,12 @@ import {
   AccordionItem,
   AccordionTrigger,
 } from "@/components/ui/accordion";
-import {
-  Save,
-  Send,
-  Loader2,
-  CheckCircle2,
-  AlertCircle,
-  ArrowLeft,
-  ExternalLink,
-  Code2,
-  Image as ImageIcon,
-  Clock,
-  Settings2,
-} from "lucide-react";
+import { Save, Send, Loader2, ArrowLeft, Image as ImageIcon, Settings2 } from "lucide-react";
 import { MediaPickerModal } from "@/components/admin-media-picker";
+import { StatusBanner, type StatusMessage } from "@/components/admin/status-banner";
+import { PublishStateBadge } from "@/components/admin/publish-state-badge";
+import { ConfirmDialog } from "@/components/admin/confirm-dialog";
+import { getErrorMessage } from "@/lib/errors";
 
 export const Route = createFileRoute("/admin/products/$id")({
   head: () => ({
@@ -92,10 +84,8 @@ function AdminProductDetail() {
   const [showMediaPicker, setShowMediaPicker] = useState(false);
   const [jsonText, setJsonText] = useState("");
   const [jsonError, setJsonError] = useState<string | null>(null);
-  const [statusMessage, setStatusMessage] = useState<{
-    type: "success" | "error";
-    text: string;
-  } | null>(null);
+  const [statusMessage, setStatusMessage] = useState<StatusMessage | null>(null);
+  const [confirmPublish, setConfirmPublish] = useState(false);
 
   // 1. Fetch available categories
   const { data: categories } = useQuery({
@@ -165,7 +155,8 @@ function AdminProductDetail() {
       setInitialApplicationsRaw(aText);
       setJsonText(JSON.stringify(productData, null, 2));
     } else if (isNew && categories && categories.length > 0 && !formData.category_id) {
-      setFormData((prev) => ({ ...prev, category_id: categories[0].id }));
+      const firstCategory = categories[0];
+      if (firstCategory) setFormData((prev) => ({ ...prev, category_id: firstCategory.id }));
     }
   }, [productData, categories, isNew]);
 
@@ -196,6 +187,7 @@ function AdminProductDetail() {
         e.returnValue = "You have unsaved changes. Are you sure you want to leave?";
         return e.returnValue;
       }
+      return undefined;
     };
     window.addEventListener("beforeunload", handleBeforeUnload);
     return () => window.removeEventListener("beforeunload", handleBeforeUnload);
@@ -236,10 +228,10 @@ function AdminProductDetail() {
       queryClient.invalidateQueries({ queryKey: ["admin_products_with_drafts"] });
       navigate({ to: "/admin/products/$id", params: { id: newProd.id } });
     },
-    onError: (err: Error) => {
+    onError: (err: unknown) => {
       setStatusMessage({
         type: "error",
-        text: `Failed to create product: ${err.message}`,
+        text: `Failed to create product: ${getErrorMessage(err)}`,
       });
     },
   });
@@ -268,15 +260,15 @@ function AdminProductDetail() {
       setInitialApplicationsRaw(applicationsRaw);
       setStatusMessage({
         type: "success",
-        text: "Draft staged successfully. Live public website remains on current published version.",
+        text: "Draft saved. The live website still shows the current published version.",
       });
       queryClient.invalidateQueries({ queryKey: ["admin_product_detail", id] });
       queryClient.invalidateQueries({ queryKey: ["admin_products_with_drafts"] });
     },
-    onError: (err: Error) => {
+    onError: (err: unknown) => {
       setStatusMessage({
         type: "error",
-        text: `Failed to stage draft: ${err.message}`,
+        text: `Failed to save draft: ${getErrorMessage(err)}`,
       });
     },
   });
@@ -287,8 +279,9 @@ function AdminProductDetail() {
       if (!supabase) throw new Error("Supabase client is not available.");
       if (isNew) throw new Error("Product must be saved before publishing.");
 
-      // First save the current form into product_drafts
-      await supabase.from("product_drafts").upsert(
+      // First save the current form into product_drafts; stop if that fails rather than
+      // publishing an older draft.
+      const { error: draftErr } = await supabase.from("product_drafts").upsert(
         {
           product_id: id,
           draft_data: stagedPayload,
@@ -296,6 +289,7 @@ function AdminProductDetail() {
         },
         { onConflict: "product_id" },
       );
+      if (draftErr) throw draftErr;
 
       // Call secure publish_product RPC
       const { error } = await supabase.rpc("publish_product", {
@@ -317,10 +311,10 @@ function AdminProductDetail() {
       queryClient.invalidateQueries({ queryKey: ["admin_products_with_drafts"] });
       queryClient.invalidateQueries({ queryKey: ["product-categories", "published"] });
     },
-    onError: (err: Error) => {
+    onError: (err: unknown) => {
       setStatusMessage({
         type: "error",
-        text: `Failed to publish product: ${err.message}`,
+        text: `Failed to publish product: ${getErrorMessage(err)}`,
       });
     },
   });
@@ -343,8 +337,8 @@ function AdminProductDetail() {
     };
   };
 
-  const handleSaveDraft = (e: React.FormEvent) => {
-    e.preventDefault();
+  const handleSaveDraft = (e?: React.FormEvent) => {
+    e?.preventDefault();
     setStatusMessage(null);
 
     const payload = getPayloadFromState();
@@ -358,20 +352,14 @@ function AdminProductDetail() {
 
   const handlePublish = () => {
     if (isNew) {
-      alert("Please save the product first before publishing.");
+      setStatusMessage({ type: "info", text: "Please create the product before publishing." });
       return;
     }
-
-    if (
-      window.confirm(
-        `Are you sure you want to publish "${formData.name}"? It will immediately appear on the live website.`,
-      )
-    ) {
-      setStatusMessage(null);
-      const payload = getPayloadFromState();
-      publishMutation.mutate(payload);
-    }
+    setConfirmPublish(true);
   };
+
+  const anyPending =
+    saveDraftMutation.isPending || createProductMutation.isPending || publishMutation.isPending;
 
   const handleApplyJson = () => {
     try {
@@ -402,7 +390,7 @@ function AdminProductDetail() {
     return (
       <div className="rounded-xl border border-destructive/20 bg-destructive/10 p-6 text-destructive">
         <p className="font-semibold">Error loading product</p>
-        <p className="text-sm mt-1">{(fetchError as Error).message}</p>
+        <p className="text-sm mt-1">{getErrorMessage(fetchError)}</p>
         <Button onClick={() => refetch()} variant="outline" className="mt-4">
           Try Again
         </Button>
@@ -413,8 +401,8 @@ function AdminProductDetail() {
   return (
     <div className="space-y-6 max-w-5xl">
       {/* Top Toolbar */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-6 border-b border-border">
-        <div>
+      <div className="flex flex-col lg:flex-row lg:items-end justify-between gap-4 pb-6 border-b border-border">
+        <div className="min-w-0">
           <Link
             to="/admin/products"
             className="inline-flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground mb-2"
@@ -422,50 +410,31 @@ function AdminProductDetail() {
             <ArrowLeft className="size-3.5" /> Back to Products
           </Link>
           <div className="flex items-center gap-3 flex-wrap">
-            <h2 className="text-2xl font-bold tracking-tight text-foreground">
+            <h1 className="text-2xl font-bold tracking-tight text-foreground break-words">
               {isNew ? "New Product" : `Edit: ${formData.name}`}
-            </h2>
-            {/* 3 Explicit States */}
-            {isDirty ? (
-              <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-semibold bg-amber-500/15 text-amber-700 dark:text-amber-400 border border-amber-500/30">
-                <span className="size-1.5 rounded-full bg-amber-500 animate-pulse" />
-                Changes not saved
-              </span>
-            ) : productData?.isDraftStaged ? (
-              <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-semibold bg-sky-500/10 text-sky-700 dark:text-sky-400 border border-sky-500/20">
-                <Clock className="size-3" />
-                Draft saved — not live yet
-              </span>
-            ) : formData.is_published ? (
-              <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-semibold bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 border border-emerald-500/20">
-                <CheckCircle2 className="size-3" />
-                Published on website
-              </span>
-            ) : (
-              <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-semibold bg-zinc-500/10 text-zinc-600 dark:text-zinc-400 border border-zinc-500/20">
-                Unpublished draft
-              </span>
-            )}
+            </h1>
+            <PublishStateBadge
+              isDirty={isDirty}
+              hasDraft={Boolean(productData?.isDraftStaged)}
+              {...(formData.is_published ? {} : { unpublishedLabel: "Not published yet" })}
+            />
           </div>
         </div>
 
-        <div className="flex items-center gap-2.5">
+        <div className="flex flex-wrap items-center gap-2.5">
           <Button
             type="button"
             variant="outline"
             size="default"
-            onClick={handleSaveDraft}
-            disabled={
-              saveDraftMutation.isPending ||
-              createProductMutation.isPending ||
-              publishMutation.isPending
-            }
+            onClick={() => handleSaveDraft()}
+            disabled={anyPending}
             className="gap-2 font-medium"
           >
-            {(saveDraftMutation.isPending || createProductMutation.isPending) && (
+            {saveDraftMutation.isPending || createProductMutation.isPending ? (
               <Loader2 className="size-4 animate-spin" />
+            ) : (
+              <Save className="size-4" />
             )}
-            <Save className="size-4" />
             {isNew ? "Create Product" : "Save Draft"}
           </Button>
 
@@ -475,7 +444,7 @@ function AdminProductDetail() {
               variant="gold"
               size="default"
               onClick={handlePublish}
-              disabled={publishMutation.isPending || saveDraftMutation.isPending}
+              disabled={anyPending}
               className="gap-2 font-semibold shadow-xs"
             >
               {publishMutation.isPending ? (
@@ -490,22 +459,7 @@ function AdminProductDetail() {
       </div>
 
       {/* Status Alert */}
-      {statusMessage && (
-        <div
-          className={`flex items-start gap-3 rounded-lg border p-4 text-sm ${
-            statusMessage.type === "success"
-              ? "border-emerald-500/30 bg-emerald-500/10 text-emerald-800 dark:text-emerald-200"
-              : "border-destructive/30 bg-destructive/10 text-destructive"
-          }`}
-        >
-          {statusMessage.type === "success" ? (
-            <CheckCircle2 className="size-5 shrink-0 text-emerald-600 dark:text-emerald-400 mt-0.5" />
-          ) : (
-            <AlertCircle className="size-5 shrink-0 text-destructive mt-0.5" />
-          )}
-          <p className="font-medium">{statusMessage.text}</p>
-        </div>
-      )}
+      <StatusBanner message={statusMessage} onDismiss={() => setStatusMessage(null)} />
 
       {/* Product Form */}
       <form onSubmit={handleSaveDraft} className="space-y-6">
@@ -778,21 +732,13 @@ function AdminProductDetail() {
         </Accordion>
 
         {/* Bottom Actions */}
-        <div className="flex justify-end gap-3 pt-4 border-t border-border">
-          <Button
-            type="submit"
-            variant="outline"
-            disabled={
-              saveDraftMutation.isPending ||
-              createProductMutation.isPending ||
-              publishMutation.isPending
-            }
-            className="gap-2"
-          >
-            {(saveDraftMutation.isPending || createProductMutation.isPending) && (
+        <div className="flex flex-wrap justify-end gap-3 pt-4 border-t border-border">
+          <Button type="submit" variant="outline" disabled={anyPending} className="gap-2">
+            {saveDraftMutation.isPending || createProductMutation.isPending ? (
               <Loader2 className="size-4 animate-spin" />
+            ) : (
+              <Save className="size-4" />
             )}
-            <Save className="size-4" />
             {isNew ? "Create Product" : "Save Draft"}
           </Button>
 
@@ -801,16 +747,31 @@ function AdminProductDetail() {
               type="button"
               variant="gold"
               onClick={handlePublish}
-              disabled={publishMutation.isPending || saveDraftMutation.isPending}
+              disabled={anyPending}
               className="gap-2 font-semibold shadow-xs"
             >
-              {publishMutation.isPending && <Loader2 className="size-4 animate-spin" />}
-              <Send className="size-4" />
+              {publishMutation.isPending ? (
+                <Loader2 className="size-4 animate-spin" />
+              ) : (
+                <Send className="size-4" />
+              )}
               Publish Changes
             </Button>
           )}
         </div>
       </form>
+
+      <ConfirmDialog
+        open={confirmPublish}
+        onOpenChange={setConfirmPublish}
+        title={`Publish "${formData.name || "this product"}"?`}
+        description="It will appear on the live website with these details straight away."
+        confirmLabel="Publish Product"
+        onConfirm={() => {
+          setStatusMessage(null);
+          publishMutation.mutate(getPayloadFromState());
+        }}
+      />
 
       {/* Media Picker Modal */}
       <MediaPickerModal

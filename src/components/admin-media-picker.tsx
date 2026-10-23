@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useRef, useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/lib/supabase";
 import { Button } from "@/components/ui/button";
@@ -12,8 +12,9 @@ import {
   Loader2,
   AlertCircle,
   FileImage,
-  ExternalLink,
 } from "lucide-react";
+import { Dialog, DialogContent, DialogDescription, DialogTitle } from "@/components/ui/dialog";
+import { getErrorMessage } from "@/lib/errors";
 
 export interface MediaAsset {
   id: string;
@@ -32,7 +33,7 @@ interface MediaPickerModalProps {
   isOpen: boolean;
   onClose: () => void;
   onSelect: (media: { url: string; altText: string }) => void;
-  currentUrl?: string;
+  currentUrl?: string | undefined;
 }
 
 const ALLOWED_MIME_TYPES = ["image/webp", "image/jpeg", "image/png"];
@@ -44,6 +45,7 @@ export function MediaPickerModal({ isOpen, onClose, onSelect, currentUrl }: Medi
   const [uploadAlt, setUploadAlt] = useState("");
   const [uploadError, setUploadError] = useState<string | null>(null);
   const [selectedAsset, setSelectedAsset] = useState<MediaAsset | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   // Fetch media assets
   const {
@@ -128,19 +130,17 @@ export function MediaPickerModal({ isOpen, onClose, onSelect, currentUrl }: Medi
       setUploadAlt("");
       setUploadError(null);
     },
-    onError: (err: Error) => {
-      setUploadError(err.message);
+    onError: (err: unknown) => {
+      setUploadError(getErrorMessage(err));
     },
   });
 
   const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     setUploadError(null);
-    const files = e.target.files;
-    if (!files || files.length === 0) return;
-
-    const file = files[0];
-    uploadMutation.mutate({ file, altText: uploadAlt });
+    const file = e.target.files?.[0];
     e.target.value = ""; // Reset input
+    if (!file) return;
+    uploadMutation.mutate({ file, altText: uploadAlt });
   };
 
   const handleConfirmSelect = () => {
@@ -152,8 +152,6 @@ export function MediaPickerModal({ isOpen, onClose, onSelect, currentUrl }: Medi
     onClose();
   };
 
-  if (!isOpen) return null;
-
   const filteredAssets = assets?.filter((a) => {
     const q = searchQuery.toLowerCase();
     return (
@@ -162,28 +160,27 @@ export function MediaPickerModal({ isOpen, onClose, onSelect, currentUrl }: Medi
   });
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4 backdrop-blur-xs">
-      <div className="max-h-[90vh] w-full max-w-4xl overflow-hidden rounded-xl border border-border bg-card shadow-2xl flex flex-col">
+    <Dialog open={isOpen} onOpenChange={(open) => !open && onClose()}>
+      <DialogContent className="flex max-w-4xl flex-col gap-0 overflow-hidden p-0">
         {/* Modal Header */}
-        <div className="flex items-center justify-between border-b border-border px-6 py-4">
-          <div className="flex items-center gap-2">
-            <ImageIcon className="size-5 text-primary" />
-            <h3 className="font-semibold text-foreground text-lg">Select or Upload Media</h3>
-          </div>
-          <button
-            onClick={onClose}
-            className="text-muted-foreground hover:text-foreground text-sm font-semibold"
-          >
-            ✕
-          </button>
+        <div className="flex items-center gap-2 border-b border-border px-6 py-4 pr-12">
+          <ImageIcon className="size-5 shrink-0 text-primary" aria-hidden="true" />
+          <DialogTitle className="text-lg">Select or Upload Media</DialogTitle>
+          <DialogDescription className="sr-only">
+            Choose an image from the library or upload a new one.
+          </DialogDescription>
         </div>
 
         {/* Upload & Search Toolbar */}
         <div className="p-4 border-b border-border bg-muted/20 space-y-3">
-          <div className="flex flex-col sm:flex-row items-center gap-3">
+          <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3">
             <div className="relative flex-1 w-full">
-              <Search className="absolute left-3 top-2.5 size-4 text-muted-foreground" />
+              <Search
+                className="pointer-events-none absolute left-3 top-2.5 size-4 text-muted-foreground"
+                aria-hidden="true"
+              />
               <Input
+                aria-label="Search media library"
                 placeholder="Search media library..."
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
@@ -191,28 +188,32 @@ export function MediaPickerModal({ isOpen, onClose, onSelect, currentUrl }: Medi
               />
             </div>
 
-            <div className="flex items-center gap-2 w-full sm:w-auto">
+            <div className="flex flex-col min-[420px]:flex-row items-stretch gap-2 w-full sm:w-auto">
               <Input
-                placeholder="Alt text for upload..."
+                aria-label="Description for the uploaded image"
+                placeholder="Description for upload..."
                 value={uploadAlt}
                 onChange={(e) => setUploadAlt(e.target.value)}
-                className="h-9 w-44"
+                className="h-9 min-w-0 flex-1 sm:w-44"
               />
-              <label className="inline-flex cursor-pointer items-center justify-center gap-1.5 h-9 px-4 rounded-md bg-primary text-primary-foreground text-xs font-semibold hover:bg-primary/90 transition-colors shrink-0">
-                {uploadMutation.isPending ? (
-                  <Loader2 className="size-4 animate-spin" />
-                ) : (
-                  <Upload className="size-4" />
-                )}
-                Upload Image
-                <input
-                  type="file"
-                  accept="image/webp,image/jpeg,image/png"
-                  className="hidden"
-                  onChange={handleFileUpload}
-                  disabled={uploadMutation.isPending}
-                />
-              </label>
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept="image/webp,image/jpeg,image/png"
+                className="hidden"
+                tabIndex={-1}
+                aria-hidden="true"
+                onChange={handleFileUpload}
+              />
+              <Button
+                type="button"
+                onClick={() => fileInputRef.current?.click()}
+                disabled={uploadMutation.isPending}
+                className="shrink-0"
+              >
+                {uploadMutation.isPending ? <Loader2 className="animate-spin" /> : <Upload />}
+                {uploadMutation.isPending ? "Uploading…" : "Upload Image"}
+              </Button>
             </div>
           </div>
 
@@ -225,14 +226,14 @@ export function MediaPickerModal({ isOpen, onClose, onSelect, currentUrl }: Medi
         </div>
 
         {/* Media Grid */}
-        <div className="flex-1 overflow-y-auto p-6">
+        <div className="min-h-0 flex-1 overflow-y-auto p-4 sm:p-6">
           {isLoading ? (
             <div className="flex h-64 items-center justify-center">
               <Loader2 className="size-8 animate-spin text-primary" />
             </div>
           ) : error ? (
             <div className="text-center py-12 text-destructive text-sm">
-              Failed to load media catalog: {(error as Error).message}
+              Failed to load media catalog: {getErrorMessage(error)}
             </div>
           ) : filteredAssets && filteredAssets.length > 0 ? (
             <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-4">
@@ -240,10 +241,12 @@ export function MediaPickerModal({ isOpen, onClose, onSelect, currentUrl }: Medi
                 const isSelected =
                   selectedAsset?.id === asset.id || currentUrl === asset.public_url;
                 return (
-                  <div
+                  <button
+                    type="button"
                     key={asset.id}
                     onClick={() => setSelectedAsset(asset)}
-                    className={`group relative cursor-pointer rounded-lg border overflow-hidden transition-all ${
+                    aria-pressed={isSelected}
+                    className={`group relative cursor-pointer rounded-lg border overflow-hidden text-left transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 ${
                       isSelected
                         ? "border-primary ring-2 ring-primary ring-offset-2"
                         : "border-border hover:border-primary/50"
@@ -271,7 +274,7 @@ export function MediaPickerModal({ isOpen, onClose, onSelect, currentUrl }: Medi
                         {(asset.file_size / 1024).toFixed(0)} KB · {asset.mime_type.split("/")[1]}
                       </p>
                     </div>
-                  </div>
+                  </button>
                 );
               })}
             </div>
@@ -287,8 +290,8 @@ export function MediaPickerModal({ isOpen, onClose, onSelect, currentUrl }: Medi
         </div>
 
         {/* Modal Footer */}
-        <div className="border-t border-border px-6 py-3.5 flex justify-between items-center bg-card">
-          <p className="text-xs text-muted-foreground">
+        <div className="border-t border-border px-4 sm:px-6 py-3.5 flex flex-col sm:flex-row gap-3 sm:justify-between sm:items-center bg-card">
+          <p className="min-w-0 truncate text-xs text-muted-foreground">
             {selectedAsset ? (
               <span>
                 Selected: <strong className="text-foreground">{selectedAsset.filename}</strong>
@@ -312,7 +315,7 @@ export function MediaPickerModal({ isOpen, onClose, onSelect, currentUrl }: Medi
             </Button>
           </div>
         </div>
-      </div>
-    </div>
+      </DialogContent>
+    </Dialog>
   );
 }

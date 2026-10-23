@@ -2,6 +2,7 @@ import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { useState, useEffect } from "react";
 import { useAdminAuth } from "@/lib/admin-auth";
 import { images } from "@/lib/site-data";
+import { publicSiteUrl } from "@/lib/site-url";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -151,7 +152,7 @@ function AdminLogin() {
 
         <div className="pt-4 border-t border-white/10 text-center">
           <a
-            href={import.meta.env.VITE_PUBLIC_WEBSITE_URL || "https://acoflex.com"}
+            href={publicSiteUrl("/")}
             className="text-xs text-white/60 hover:text-gold transition-colors inline-flex items-center gap-1"
           >
             ← Return to Acoflex Website
