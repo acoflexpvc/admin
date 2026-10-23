@@ -78,6 +78,7 @@ function AdminLayout() {
     { label: "Website Pages", to: "/admin", icon: FileText, exact: true },
     { label: "Products & Systems", to: "/admin/products", icon: Boxes },
     { label: "Images & Gallery", to: "/admin/media", icon: ImageIcon },
+    { label: "Hero Slider", to: "/admin/hero", icon: ImageIcon },
     { label: "Website Settings", to: "/admin/settings", icon: Settings },
   ];
 

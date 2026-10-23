@@ -1,0 +1,157 @@
+# Hero Slider Concurrency Validation Workflow
+# Validates the real `public.hero_slides` trigger that uses
+# `pg_advisory_xact_lock(7640891576956012809)`.
+# Runs entirely against a disposable local Supabase Postgres container started
+# by `supabase db start` on the runner. It never links to or touches a remote
+# Supabase project (no access token, no `supabase link`, no `db push`).
+
+name: Hero Slider Concurrency Validation
+
+on:
+  push:
+    paths:
+      - "supabase/migrations/**"
+      - ".github/workflows/hero-slider-concurrency.yml"
+      - ".github/scripts/wait_for_advisory_lock.sh"
+  pull_request:
+    paths:
+      - "supabase/migrations/**"
+      - ".github/workflows/hero-slider-concurrency.yml"
+      - ".github/scripts/wait_for_advisory_lock.sh"
+
+jobs:
+  concurrency-test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    env:
+      # Local container started by `supabase db start` (see supabase/config.toml [db] port).
+      PGHOST: 127.0.0.1
+      PGPORT: 54322
+      PGUSER: postgres
+      PGPASSWORD: postgres
+      PGDATABASE: postgres
+      LOCK_KEY: "7640891576956012809"
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install Supabase CLI
+        uses: supabase/setup-cli@v1
+        with:
+          version: 2.120.0
+
+      - name: Ensure PostgreSQL client is available
+        run: |
+          command -v psql || { sudo apt-get update && sudo apt-get install -y postgresql-client; }
+          psql --version
+
+      # ---------------------------------------------------------------
+      # Start a disposable local database; this applies every migration in
+      # supabase/migrations (the tests/ subfolder is not a migration).
+      # ---------------------------------------------------------------
+      - name: Start disposable local database and apply migrations
+        run: supabase db start
+
+      - name: Show applied migrations
+        run: psql -X -v ON_ERROR_STOP=1 -c "SELECT version FROM supabase_migrations.schema_migrations ORDER BY version;"
+
+      # ---------------------------------------------------------------
+      # Single-session regression test (rolls back all its data)
+      # ---------------------------------------------------------------
+      - name: Run regression test
+        run: |
+          psql -X -v ON_ERROR_STOP=1 -v disposable_db=true \
+            -f supabase/migrations/tests/hero_slides_concurrency_test.sql
+
+      # ---------------------------------------------------------------
+      # Two-session concurrency test. All sessions run in this one step so
+      # background jobs can be waited on and their exit codes inspected.
+      # ---------------------------------------------------------------
+      - name: Concurrent activation test (Session A holds lock, Session B waits)
+        run: |
+          set -euo pipefail
+          q() { psql -X -qAt -v ON_ERROR_STOP=1 -c "$1"; }
+
+          # Setup: table must be empty; 3 active baseline rows + 2 drafts.
+          [ "$(q 'SELECT count(*) FROM public.hero_slides;')" = "0" ] \
+            || { echo "hero_slides is not empty; refusing to run"; exit 1; }
+          q "INSERT INTO public.hero_slides (name, desktop_image, sort_order, is_active) VALUES
+               ('CI Base 1', 'https://example.com/base1.jpg', 1, true),
+               ('CI Base 2', 'https://example.com/base2.jpg', 2, true),
+               ('CI Base 3', 'https://example.com/base3.jpg', 3, true);"
+          DRAFT_A=$(q "WITH ins AS (INSERT INTO public.hero_slides (name, desktop_image, sort_order, is_active)
+                        VALUES ('CI Draft A', 'https://example.com/draft_a.jpg', 4, false) RETURNING id)
+                       SELECT id FROM ins;")
+          DRAFT_B=$(q "WITH ins AS (INSERT INTO public.hero_slides (name, desktop_image, sort_order, is_active)
+                        VALUES ('CI Draft B', 'https://example.com/draft_b.jpg', 5, false) RETURNING id)
+                       SELECT id FROM ins;")
+          echo "Draft A=$DRAFT_A  Draft B=$DRAFT_B"
+          [ "$(q 'SELECT count(*) FROM public.hero_slides WHERE is_active AND deleted_at IS NULL;')" = "3" ]
+          [ "$(q 'SELECT count(*) FROM public.hero_slides WHERE NOT is_active AND deleted_at IS NULL;')" = "2" ]
+
+          HIGH=$(( LOCK_KEY >> 32 ))
+          LOW=$(( LOCK_KEY & 0xFFFFFFFF ))
+
+          # Session A: activate Draft A and keep the transaction open for 20 s.
+          PGAPPNAME=hero_session_a psql -X -v ON_ERROR_STOP=1 > session_a.log 2>&1 <<SQL &
+          BEGIN;
+          UPDATE public.hero_slides SET is_active = true WHERE id = '$DRAFT_A';
+          SELECT pg_sleep(20);
+          COMMIT;
+          SQL
+          A_JOB=$!
+
+          # Wait until Session A actually holds the advisory lock.
+          for i in $(seq 1 15); do
+            HELD=$(q "SELECT count(*) FROM pg_locks l JOIN pg_stat_activity a USING (pid)
+                      WHERE a.application_name = 'hero_session_a' AND l.locktype = 'advisory'
+                        AND l.granted AND l.classid = $HIGH AND l.objid = $LOW AND l.objsubid = 1;")
+            [ "$HELD" = "1" ] && break
+            [ "$i" = "15" ] && { echo "Session A never acquired the advisory lock"; cat session_a.log; exit 1; }
+            sleep 1
+          done
+          echo "Session A holds the advisory lock"
+
+          # Session B: start while A is open; attempt to activate Draft B.
+          PGAPPNAME=hero_session_b psql -X > session_b.log 2>&1 <<SQL &
+          BEGIN;
+          UPDATE public.hero_slides SET is_active = true WHERE id = '$DRAFT_B';
+          \echo SQLSTATE= :LAST_ERROR_SQLSTATE
+          \echo MESSAGE= :LAST_ERROR_MESSAGE
+          ROLLBACK;
+          SQL
+          B_JOB=$!
+
+          # Prove B is blocked on A's advisory lock (i.e. the transactions overlap).
+          B_PID=""
+          for i in $(seq 1 10); do
+            B_PID=$(q "SELECT pid FROM pg_stat_activity WHERE application_name = 'hero_session_b' LIMIT 1;")
+            [ -n "$B_PID" ] && break
+            sleep 1
+          done
+          [ -n "$B_PID" ] || { echo "Session B backend not found"; cat session_b.log; exit 1; }
+          bash .github/scripts/wait_for_advisory_lock.sh "$B_PID" "$LOCK_KEY" 15
+
+          # A must commit successfully; B must then fail.
+          wait "$A_JOB" || { echo "Session A failed"; cat session_a.log; exit 1; }
+          wait "$B_JOB" || true
+
+          echo "--- Session A log ---"; cat session_a.log
+          echo "--- Session B log ---"; cat session_b.log
+
+          grep -Fxq "SQLSTATE= P0001" session_b.log \
+            || { echo "Session B did not fail with SQLSTATE P0001"; exit 1; }
+          grep -Fxq "MESSAGE= Maximum of 4 active hero slides exceeded." session_b.log \
+            || { echo "Session B error message mismatch"; exit 1; }
+
+          FINAL=$(q "SELECT count(*) FROM public.hero_slides WHERE is_active AND deleted_at IS NULL;")
+          [ "$FINAL" = "4" ] || { echo "Final active count is $FINAL (expected 4)"; exit 1; }
+          [ "$(q "SELECT is_active FROM public.hero_slides WHERE id = '$DRAFT_A';")" = "t" ]
+          [ "$(q "SELECT is_active FROM public.hero_slides WHERE id = '$DRAFT_B';")" = "f" ]
+          echo "PASS: Session B rejected with P0001; final active count is 4"
+
+      - name: Stop local database
+        if: always()
+        run: supabase stop --no-backup || true
