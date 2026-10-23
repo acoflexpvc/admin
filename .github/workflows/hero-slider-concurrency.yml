@@ -66,6 +66,14 @@ jobs:
             -f supabase/migrations/tests/hero_slides_concurrency_test.sql
 
       # ---------------------------------------------------------------
+      # Homepage hero banner rules and private upload bucket (rolls back)
+      # ---------------------------------------------------------------
+      - name: Run hero banner regression test
+        run: |
+          psql -X -v ON_ERROR_STOP=1 -v disposable_db=true \
+            -f supabase/migrations/tests/home_hero_banner_test.sql
+
+      # ---------------------------------------------------------------
       # Two-session concurrency test. All sessions run in this one step so
       # background jobs can be waited on and their exit codes inspected.
       # ---------------------------------------------------------------
